@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Business Logic für Short-Links
+ * @description Erstellt, liest und löscht Short-Links in der Datenbank.
+ *   Generiert zufällige Slugs und validiert URLs.
+ * @module src/services/link-service
+ */
+import { randomBytes } from "node:crypto";
 import { pool } from "../db/index.js";
 import { err, ok } from "../utils/result.js";
 
@@ -15,12 +22,14 @@ import { err, ok } from "../utils/result.js";
  */
 
 const CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const RESERVED = new Set(["api", "admin", "dashboard", "login", "logout", "static"]);
+const SLUG_LENGTH = 6;
+const MAX_SLUG_ATTEMPTS = 3;
 
-const generateSlug = () =>
-  Array.from(
-    { length: 6 },
-    () => CHARS[Math.floor(Math.random() * CHARS.length)],
-  ).join("");
+const generateSlug = () => {
+  const bytes = randomBytes(SLUG_LENGTH);
+  return Array.from(bytes, (b) => CHARS[b % CHARS.length]).join("");
+};
 
 const toLink = (row) => ({
   code: row.code,
@@ -28,20 +37,50 @@ const toLink = (row) => ({
   createdAt: row.created_at,
 });
 
-export const createLink = async ({ url, alias } = {}) => {
-  try {
-    new URL(url);
-  } catch {
-    return err("INVALID_URL");
-  }
+/**
+ * Prüft ob eine URL syntaktisch gültig ist.
+ * @param {string} url
+ * @returns {boolean}
+ */
+const isValidUrl = (url) => { try { new URL(url); return true; } catch { return false; } };
 
-  const code = alias ?? generateSlug();
+/**
+ * Prüft ob ein Custom-Alias reserviert oder bereits vergeben ist.
+ * @param {string} alias
+ * @returns {Promise<{ success: true, data: string } | { success: false, error: string }>}
+ */
+const validateAlias = async (alias) => {
+  if (RESERVED.has(alias)) return err("SLUG_TAKEN");
   const existing = await pool.query(
     "SELECT code FROM short_links WHERE code = $1",
-    [code],
+    [alias],
   );
   if (existing.rows.length > 0) return err("SLUG_TAKEN");
+  return ok(alias);
+};
 
+/**
+ * Sucht einen freien zufälligen Slug (max. MAX_SLUG_ATTEMPTS Versuche).
+ * @returns {Promise<{ success: true, data: string } | { success: false, error: string }>}
+ */
+const findAvailableSlug = async () => {
+  for (let i = 0; i < MAX_SLUG_ATTEMPTS; i++) {
+    const code = generateSlug();
+    const taken = (await pool.query(
+      "SELECT code FROM short_links WHERE code = $1", [code],
+    )).rows.length > 0;
+    if (!taken) return ok(code);
+  }
+  return err("SLUG_TAKEN");
+};
+
+/**
+ * Fügt einen neuen Short-Link in die Datenbank ein.
+ * @param {string} code - Slug für den neuen Link
+ * @param {string} url - Original-URL
+ * @returns {Promise<{ success: true, data: Link }>}
+ */
+const insertLink = async (code, url) => {
   const result = await pool.query(
     "INSERT INTO short_links (code, original_url) VALUES ($1, $2) RETURNING *",
     [code, url],
@@ -49,6 +88,28 @@ export const createLink = async ({ url, alias } = {}) => {
   return ok(toLink(result.rows[0]));
 };
 
+/**
+ * Erstellt einen neuen Short-Link.
+ * @param {import("./link-service.js").CreateLinkInput} input - URL und optionaler Alias
+ * @returns {Promise<{ success: true, data: import("./link-service.js").Link } | { success: false, error: string }>}
+ */
+export const createLink = async ({ url, alias } = {}) => {
+  if (!isValidUrl(url)) return err("INVALID_URL");
+  if (alias) {
+    const check = await validateAlias(alias);
+    if (!check.success) return check;
+    return insertLink(alias, url);
+  }
+  const slugResult = await findAvailableSlug();
+  if (!slugResult.success) return slugResult;
+  return insertLink(slugResult.data, url);
+};
+
+/**
+ * Liest einen einzelnen Short-Link anhand seines Codes.
+ * @param {string} code - 6-stelliger alphanumerischer Slug
+ * @returns {Promise<{ success: true, data: import("./link-service.js").Link } | { success: false, error: string }>}
+ */
 export const getLink = async (code) => {
   const result = await pool.query("SELECT * FROM short_links WHERE code = $1", [
     code,
@@ -57,6 +118,10 @@ export const getLink = async (code) => {
   return ok(toLink(result.rows[0]));
 };
 
+/**
+ * Liest alle Short-Links, absteigend nach Erstellungsdatum sortiert.
+ * @returns {Promise<{ success: true, data: import("./link-service.js").Link[] }>}
+ */
 export const getAllLinks = async () => {
   const result = await pool.query(
     "SELECT * FROM short_links ORDER BY created_at DESC",
@@ -64,6 +129,11 @@ export const getAllLinks = async () => {
   return ok(result.rows.map(toLink));
 };
 
+/**
+ * Löscht einen Short-Link anhand seines Codes.
+ * @param {string} code - 6-stelliger alphanumerischer Slug
+ * @returns {Promise<{ success: true, data: undefined } | { success: false, error: string }>}
+ */
 export const deleteLink = async (code) => {
   const result = await pool.query(
     "DELETE FROM short_links WHERE code = $1 RETURNING code",

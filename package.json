@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "test-link-service": "node --test tests/link-service.test.js"
   },
   "dependencies": {
     "pg": "^8.13.3"

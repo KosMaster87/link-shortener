@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Business Logic für Klick-Analytics
+ * @description Speichert Klick-Ereignisse und liest die Klick-Historie
+ *   eines Short-Links aus der Datenbank.
+ * @module src/services/analytics-service
+ */
 import { pool } from "../db/index.js";
 import { ok } from "../utils/result.js";
 
@@ -25,6 +31,11 @@ const toClick = (row) => ({
   userAgent: row.user_agent,
 });
 
+/**
+ * Speichert einen Klick-Eintrag für einen Short-Link.
+ * @param {import("./analytics-service.js").RecordClickInput} input - Code, Referrer und User-Agent
+ * @returns {Promise<{ success: true, data: undefined }>}
+ */
 export const recordClick = async ({ code, referrer, userAgent }) => {
   await pool.query(
     "INSERT INTO link_clicks (code, referrer, user_agent) VALUES ($1, $2, $3)",
@@ -33,6 +44,11 @@ export const recordClick = async ({ code, referrer, userAgent }) => {
   return ok();
 };
 
+/**
+ * Liest alle Klicks für einen Short-Link, absteigend nach Zeitpunkt sortiert.
+ * @param {string} code - Slug des Short-Links
+ * @returns {Promise<{ success: true, data: import("./analytics-service.js").Click[] }>}
+ */
 export const getClicksByCode = async (code) => {
   const result = await pool.query(
     "SELECT * FROM link_clicks WHERE code = $1 ORDER BY clicked_at DESC",

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview HTTP Server Entry Point
+ * @description Startet den nativen Node.js HTTP-Server, parsed Requests und
+ *   delegiert an die zuständigen Route-Handler. Bedient außerdem statische
+ *   Dateien aus dem public/-Verzeichnis.
+ * @module server
+ */
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname } from "node:path";
@@ -13,6 +20,11 @@ const MIME_TYPES = {
   ".js": "application/javascript",
 };
 
+/**
+ * Liest den Request-Body und parst ihn als JSON.
+ * @param {import("node:http").IncomingMessage} req - Eingehender HTTP-Request
+ * @returns {Promise<Object>} Geparster Body oder leeres Objekt bei Parse-Fehler
+ */
 const parseBody = (req) =>
   new Promise((resolve) => {
     let raw = "";
@@ -28,6 +40,12 @@ const parseBody = (req) =>
     });
   });
 
+/**
+ * Liefert eine statische Datei aus dem public/-Verzeichnis.
+ * @param {import("node:http").ServerResponse} res - HTTP-Response
+ * @param {string} urlPath - URL-Pfad der angeforderten Datei
+ * @returns {Promise<void>}
+ */
 const serveStatic = async (res, urlPath) => {
   const file = urlPath === "/" ? "/index.html" : urlPath;
   try {
@@ -41,48 +59,69 @@ const serveStatic = async (res, urlPath) => {
   }
 };
 
+/**
+ * Sendet eine generische 404-JSON-Antwort.
+ * @param {import("node:http").ServerResponse} res - HTTP-Response
+ * @returns {void}
+ */
 const send404 = (res) => {
   res.writeHead(404, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ error: "NOT_FOUND" }));
 };
 
+/**
+ * Verarbeitet API-Routen unter /api/.
+ * @param {import("node:http").IncomingMessage} req
+ * @param {import("node:http").ServerResponse} res
+ * @param {string} method - HTTP-Methode
+ * @param {string} path - URL-Pfad
+ * @returns {Promise<void>}
+ */
+const routeApi = async (req, res, method, path) => {
+  if (method === "POST" && path === "/api/links")
+    return await handleLinks(req, res, {});
+  if (method === "GET" && path === "/api/links")
+    return await handleLinks(req, res, {});
+  const deleteMatch = path.match(/^\/api\/links\/([^/]+)$/);
+  if (method === "DELETE" && deleteMatch)
+    return await handleLinks(req, res, { code: deleteMatch[1] });
+  const clicksMatch = path.match(/^\/api\/links\/([^/]+)\/clicks$/);
+  if (method === "GET" && clicksMatch)
+    return await handleAnalytics(req, res, { code: clicksMatch[1] });
+  send404(res);
+};
+
+/**
+ * Verarbeitet GET-Routen für Weiterleitungen und statische Dateien.
+ * @param {import("node:http").IncomingMessage} req
+ * @param {import("node:http").ServerResponse} res
+ * @param {string} path - URL-Pfad
+ * @returns {Promise<void>}
+ */
+const routeGet = async (req, res, path) => {
+  const codeMatch = path.match(/^\/([a-zA-Z0-9]{6})$/);
+  if (codeMatch) return await handleRedirect(req, res, { code: codeMatch[1] });
+  return await serveStatic(res, path);
+};
+
+/**
+ * Dispatcht einen eingehenden Request an den passenden Handler.
+ * @param {import("node:http").IncomingMessage} req
+ * @param {import("node:http").ServerResponse} res
+ * @returns {Promise<void>}
+ */
+const routeRequest = async (req, res) => {
+  const { method } = req;
+  const path = new URL(req.url, `http://localhost:${PORT}`).pathname;
+  if (["POST", "PUT"].includes(method)) req.body = await parseBody(req);
+  if (path.startsWith("/api/")) return await routeApi(req, res, method, path);
+  if (method === "GET") return await routeGet(req, res, path);
+  send404(res);
+};
+
 const server = createServer(async (req, res) => {
   try {
-    const { method } = req;
-    const url = new URL(req.url, `http://localhost:${PORT}`);
-    const path = url.pathname;
-
-    if (["POST", "PUT"].includes(method)) req.body = await parseBody(req);
-
-    // POST /api/links
-    if (method === "POST" && path === "/api/links")
-      return await handleLinks(req, res, {});
-
-    // GET /api/links
-    if (method === "GET" && path === "/api/links")
-      return await handleLinks(req, res, {});
-
-    // DELETE /api/links/:code
-    const deleteMatch =
-      method === "DELETE" && path.match(/^\/api\/links\/([^/]+)$/);
-    if (deleteMatch)
-      return await handleLinks(req, res, { code: deleteMatch[1] });
-
-    // GET /api/links/:code/clicks
-    const clicksMatch =
-      method === "GET" && path.match(/^\/api\/links\/([^/]+)\/clicks$/);
-    if (clicksMatch)
-      return await handleAnalytics(req, res, { code: clicksMatch[1] });
-
-    // Static files (public/)
-    if (method === "GET" && !path.startsWith("/api/")) {
-      const codeMatch = path.match(/^\/([a-zA-Z0-9]{6})$/);
-      if (codeMatch)
-        return await handleRedirect(req, res, { code: codeMatch[1] });
-      return await serveStatic(res, path);
-    }
-
-    send404(res);
+    await routeRequest(req, res);
   } catch (error) {
     console.error("Unhandled error:", error);
     res.writeHead(500, { "Content-Type": "application/json" });

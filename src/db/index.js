@@ -1,3 +1,9 @@
+/**
+ * @fileoverview PostgreSQL Connection Pool
+ * @description Richtet den pg.Pool ein und exportiert ihn für alle Services.
+ *   Verbindung läuft über Unix-Socket mit Peer-Authentifizierung.
+ * @module src/db/index
+ */
 import pg from "pg";
 
 export const pool = new pg.Pool({
