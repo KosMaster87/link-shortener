@@ -14,7 +14,7 @@ import { getLink } from "../services/link-service.js";
  * @param {*} data - Zu serialisierendes Payload
  * @returns {void}
  */
-const sendJson = (res, status, data) => {
+const send = (res, status, data) => {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
 };
@@ -28,7 +28,7 @@ const sendJson = (res, status, data) => {
  */
 export const handleRedirect = async (req, res, params) => {
   const result = await getLink(params.code);
-  if (!result.success) return sendJson(res, 404, { error: "NOT_FOUND" });
+  if (!result.success) return send(res, 404, { error: "NOT_FOUND" });
 
   await recordClick({
     code: params.code,

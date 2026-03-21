@@ -22,7 +22,14 @@ import { err, ok } from "../utils/result.js";
  */
 
 const CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-const RESERVED = new Set(["api", "admin", "dashboard", "login", "logout", "static"]);
+const RESERVED = new Set([
+  "api",
+  "admin",
+  "dashboard",
+  "login",
+  "logout",
+  "static",
+]);
 const SLUG_LENGTH = 6;
 const MAX_SLUG_ATTEMPTS = 3;
 
@@ -42,7 +49,14 @@ const toLink = (row) => ({
  * @param {string} url
  * @returns {boolean}
  */
-const isValidUrl = (url) => { try { new URL(url); return true; } catch { return false; } };
+const isValidUrl = (url) => {
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 /**
  * Prüft ob ein Custom-Alias reserviert oder bereits vergeben ist.
@@ -66,9 +80,11 @@ const validateAlias = async (alias) => {
 const findAvailableSlug = async () => {
   for (let i = 0; i < MAX_SLUG_ATTEMPTS; i++) {
     const code = generateSlug();
-    const taken = (await pool.query(
-      "SELECT code FROM short_links WHERE code = $1", [code],
-    )).rows.length > 0;
+    const { rows } = await pool.query(
+      "SELECT code FROM short_links WHERE code = $1",
+      [code],
+    );
+    const taken = rows.length > 0;
     if (!taken) return ok(code);
   }
   return err("SLUG_TAKEN");
@@ -96,8 +112,8 @@ const insertLink = async (code, url) => {
 export const createLink = async ({ url, alias } = {}) => {
   if (!isValidUrl(url)) return err("INVALID_URL");
   if (alias) {
-    const check = await validateAlias(alias);
-    if (!check.success) return check;
+    const aliasResult = await validateAlias(alias);
+    if (!aliasResult.success) return aliasResult;
     return insertLink(alias, url);
   }
   const slugResult = await findAvailableSlug();

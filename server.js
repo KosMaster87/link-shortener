@@ -47,10 +47,10 @@ const parseBody = (req) =>
  * @returns {Promise<void>}
  */
 const serveStatic = async (res, urlPath) => {
-  const file = urlPath === "/" ? "/index.html" : urlPath;
+  const filePath = urlPath === "/" ? "/index.html" : urlPath;
   try {
-    const content = await readFile(`./public${file}`);
-    const mime = MIME_TYPES[extname(file)] ?? "text/plain";
+    const content = await readFile(`./public${filePath}`);
+    const mime = MIME_TYPES[extname(filePath)] ?? "text/plain";
     res.writeHead(200, { "Content-Type": mime });
     res.end(content);
   } catch {
@@ -78,9 +78,7 @@ const send404 = (res) => {
  * @returns {Promise<void>}
  */
 const routeApi = async (req, res, method, path) => {
-  if (method === "POST" && path === "/api/links")
-    return await handleLinks(req, res, {});
-  if (method === "GET" && path === "/api/links")
+  if (["GET", "POST"].includes(method) && path === "/api/links")
     return await handleLinks(req, res, {});
   const deleteMatch = path.match(/^\/api\/links\/([^/]+)$/);
   if (method === "DELETE" && deleteMatch)
