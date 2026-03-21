@@ -77,7 +77,8 @@ const send404 = (res) => {
 /**
  * Routet Anfragen unter /api/ an den passenden Handler:
  * GET|POST /api/links → handleLinks,
- * DELETE /api/links/:code → handleLinks mit Code,
+ * DELETE|PUT /api/links/:code → handleLinks mit Code,
+ * PATCH /api/links/:code/toggle → handleLinks mit Code,
  * GET /api/links/:code/clicks → handleAnalytics.
  * Alle anderen Pfade oder Methoden antworten mit 404.
  * @param {import("node:http").IncomingMessage} req
@@ -89,9 +90,12 @@ const send404 = (res) => {
 const routeApi = async (req, res, method, path) => {
   if (["GET", "POST"].includes(method) && path === "/api/links")
     return await handleLinks(req, res, {});
-  const deleteMatch = path.match(/^\/api\/links\/([^/]+)$/);
-  if (method === "DELETE" && deleteMatch)
-    return await handleLinks(req, res, { code: deleteMatch[1] });
+  const codeMatch = path.match(/^\/api\/links\/([^/]+)$/);
+  if (["DELETE", "PUT"].includes(method) && codeMatch)
+    return await handleLinks(req, res, { code: codeMatch[1] });
+  const toggleMatch = path.match(/^\/api\/links\/([^/]+)\/toggle$/);
+  if (method === "PATCH" && toggleMatch)
+    return await handleLinks(req, res, { code: toggleMatch[1] });
   const clicksMatch = path.match(/^\/api\/links\/([^/]+)\/clicks$/);
   if (method === "GET" && clicksMatch)
     return await handleAnalytics(req, res, { code: clicksMatch[1] });

@@ -8,6 +8,8 @@ import {
   createLink,
   deleteLink,
   getAllLinks,
+  toggleActive,
+  updateLink,
 } from "../services/link-service.js";
 
 const ERROR_STATUS = { INVALID_URL: 422, SLUG_TAKEN: 409, NOT_FOUND: 404 };
@@ -67,15 +69,48 @@ const handleDelete = async (res, code) => {
 };
 
 /**
- * Dispatcht GET /api/links, POST /api/links und DELETE /api/links/:code
- * an die jeweiligen Handler. params.code wird nur bei DELETE benötigt.
+ * Aktualisiert die original_url eines bestehenden Short-Links, antwortet mit 200.
+ * Schlägt mit 422 fehl wenn die neue URL kein gültiges Format hat.
+ * Schlägt mit 404 fehl wenn kein Link mit diesem Code existiert.
+ * @param {import("node:http").IncomingMessage} req
+ * @param {import("node:http").ServerResponse} res
+ * @param {string} code - Short-Link-Code
+ * @returns {Promise<void>}
+ */
+const handlePut = async (req, res, code) => {
+  const result = await updateLink(code, req.body.url);
+  if (!result.success)
+    return send(res, ERROR_STATUS[result.error], { error: result.error });
+  return send(res, 200, result.data);
+};
+
+/**
+ * Schaltet is_active des Short-Links um und antwortet mit 200 und dem Link.
+ * Schlägt mit 404 fehl wenn kein Link mit diesem Code existiert.
+ * @param {import("node:http").ServerResponse} res
+ * @param {string} code - Short-Link-Code
+ * @returns {Promise<void>}
+ */
+const handleToggle = async (res, code) => {
+  const result = await toggleActive(code);
+  if (!result.success)
+    return send(res, ERROR_STATUS[result.error], { error: result.error });
+  return send(res, 200, result.data);
+};
+
+/**
+ * Dispatcht GET /api/links, POST /api/links, DELETE /api/links/:code,
+ * PUT /api/links/:code und PATCH /api/links/:code/toggle an die jeweiligen Handler.
+ * params.code wird bei allen Routen außer GET und POST benötigt.
  * @param {import("node:http").IncomingMessage} req - HTTP-Request
  * @param {import("node:http").ServerResponse} res - HTTP-Response
- * @param {{ code?: string }} params - Route-Parameter (code nur bei DELETE)
+ * @param {{ code?: string }} params - Route-Parameter
  * @returns {Promise<void>}
  */
 export const handleLinks = async (req, res, params) => {
   if (req.method === "GET") return handleGet(res);
   if (req.method === "POST") return handlePost(req, res);
   if (req.method === "DELETE") return handleDelete(res, params.code);
+  if (req.method === "PUT") return handlePut(req, res, params.code);
+  if (req.method === "PATCH") return handleToggle(res, params.code);
 };

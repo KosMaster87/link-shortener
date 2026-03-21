@@ -10,9 +10,10 @@ import { err, ok } from "../utils/result.js";
 
 /**
  * @typedef {Object} Link
- * @property {string} code         - 6-stelliger alphanumerischer Slug (Primary Key)
- * @property {string} originalUrl  - Die vollständige Ziel-URL
- * @property {Date}   createdAt    - Zeitpunkt der Erstellung
+ * @property {string}  code        - 6-stelliger alphanumerischer Slug (Primary Key)
+ * @property {string}  originalUrl - Die vollständige Ziel-URL
+ * @property {Date}    createdAt   - Zeitpunkt der Erstellung
+ * @property {boolean} isActive    - Ob der Link aktiv (weiterleitend) ist
  */
 
 /**
@@ -42,6 +43,7 @@ const toLink = (row) => ({
   code: row.code,
   originalUrl: row.original_url,
   createdAt: row.created_at,
+  isActive: row.is_active,
 });
 
 /**
@@ -171,4 +173,37 @@ export const deleteLink = async (code) => {
   );
   if (result.rows.length === 0) return err("NOT_FOUND");
   return ok();
+};
+
+/**
+ * Aktualisiert die original_url eines bestehenden Short-Links.
+ * Gibt INVALID_URL zurück wenn die neue URL kein gültiges Format hat.
+ * Gibt NOT_FOUND zurück wenn kein Link mit diesem Code existiert.
+ * @param {string} code - 6-stelliger alphanumerischer Slug
+ * @param {string} url - Neue Ziel-URL
+ * @returns {Promise<{ success: true, data: import("./link-service.js").Link } | { success: false, error: string }>}
+ */
+export const updateLink = async (code, url) => {
+  if (!isValidUrl(url)) return err("INVALID_URL");
+  const result = await pool.query(
+    "UPDATE short_links SET original_url = $1 WHERE code = $2 RETURNING *",
+    [url, code],
+  );
+  if (result.rows.length === 0) return err("NOT_FOUND");
+  return ok(toLink(result.rows[0]));
+};
+
+/**
+ * Schaltet is_active eines Short-Links um (true → false, false → true).
+ * Gibt NOT_FOUND zurück wenn kein Link mit diesem Code existiert.
+ * @param {string} code - 6-stelliger alphanumerischer Slug
+ * @returns {Promise<{ success: true, data: import("./link-service.js").Link } | { success: false, error: string }>}
+ */
+export const toggleActive = async (code) => {
+  const result = await pool.query(
+    "UPDATE short_links SET is_active = NOT is_active WHERE code = $1 RETURNING *",
+    [code],
+  );
+  if (result.rows.length === 0) return err("NOT_FOUND");
+  return ok(toLink(result.rows[0]));
 };

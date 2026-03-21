@@ -4,6 +4,9 @@ CREATE TABLE short_links (
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Migration Tag 4: is_active hinzufügen
+-- ALTER TABLE short_links ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE;
+
 CREATE TABLE link_clicks (
   id         SERIAL PRIMARY KEY,
   code       TEXT REFERENCES short_links(code) ON DELETE CASCADE,
